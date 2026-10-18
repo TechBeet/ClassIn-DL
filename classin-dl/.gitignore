@@ -1,0 +1,22 @@
+﻿# 依赖目录
+node_modules/
+src-tauri/target/
+
+# 构建输出
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# 日志
+*.log
+logs/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 临时文件
+*.tmp
+*.temp
