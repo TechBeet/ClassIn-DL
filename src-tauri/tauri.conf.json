@@ -27,8 +27,8 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/green-icon.ico",
-      "icons/white-icon.ico"
+      "icons/icon.ico",
+      "icons/icon.png"
     ]
   }
 }
