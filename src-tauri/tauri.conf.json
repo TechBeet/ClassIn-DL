@@ -1,16 +1,16 @@
 {
-  "productName": "ClassIn视频下载工具",
+  "productName": "ClassInDL",
   "version": "1.0.0",
   "identifier": "com.classin-dl.tool",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1682"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ClassIn视频下载工具",
+        "title": "ClassIn Video Downloader",
         "width": 1280,
         "height": 720,
         "minWidth": 800,
@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": "msi",
     "icon": [
       "icons/icon.ico",
       "icons/icon.png"
