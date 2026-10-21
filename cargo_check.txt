@@ -1,0 +1,81 @@
+    Checking classin-dl v1.0.0 (D:\github\ClassIn-DL\src-tauri)
+error[E0432]: unresolved import `iced::Command`
+  --> src\main.rs:10:18
+   |
+10 |     Application, Command, Element, Length, Settings, Alignment, Subscription,
+   |                  ^^^^^^^ no `Command` in the root
+   |
+   = help: consider importing this struct instead:
+           std::process::Command
+
+error[E0433]: cannot find `stream` in `stream`
+   --> src\main.rs:274:55
+    |
+274 |         iced::Subscription::from_recipe(iced::stream::stream! {
+    |                                                       ^^^^^^ could not find `stream` in `stream`
+
+error: cannot find attribute `default` in this scope
+ --> src\models.rs:8:7
+  |
+8 |     #[default]
+  |       ^^^^^^^
+  |
+help: `default` is an attribute that can be used by the derive macro `Default`, you might be missing a `derive` attribute
+  |
+7 + #[derive(Default)]
+8 | pub enum DownloadStatus {
+  |
+help: consider adding a derive
+  |
+7 + #[derive(Default)]
+8 | pub enum DownloadStatus {
+  |
+
+error[E0433]: cannot find `tokio` in `iced`
+   --> src\main.rs:193:27
+    |
+193 |     type Executor = iced::tokio::Tokio;
+    |                           ^^^^^ could not find `tokio` in `iced`
+
+error[E0433]: cannot find `Container` in `theme`
+   --> src\main.rs:287:29
+    |
+287 |         .style(iced::theme::Container::Box)
+    |                             ^^^^^^^^^ could not find `Container` in `theme`
+
+error[E0433]: cannot find `Container` in `theme`
+   --> src\main.rs:299:29
+    |
+299 |         .style(iced::theme::Container::Box)
+    |                             ^^^^^^^^^ could not find `Container` in `theme`
+
+error[E0433]: cannot find `Container` in `theme`
+   --> src\main.rs:309:29
+    |
+309 |         .style(iced::theme::Container::Box);
+    |                             ^^^^^^^^^ could not find `Container` in `theme`
+
+error[E0433]: cannot find `Container` in `theme`
+   --> src\main.rs:315:33
+    |
+315 |             .style(iced::theme::Container::Box)
+    |                                 ^^^^^^^^^ could not find `Container` in `theme`
+
+error[E0404]: expected trait, found struct `Application`
+   --> src\main.rs:190:6
+    |
+190 | impl Application for App {
+    |      ^^^^^^^^^^^ not a trait
+
+warning: unused imports: `Color` and `Font`
+  --> src\main.rs:12:5
+   |
+12 |     Color, Font, Theme,
+   |     ^^^^^  ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+Some errors have detailed explanations: E0404, E0432, E0433.
+For more information about an error, try `rustc --explain E0404`.
+warning: `classin-dl` (bin "classin-dl") generated 1 warning
+error: could not compile `classin-dl` (bin "classin-dl") due to 9 previous errors; 1 warning emitted
