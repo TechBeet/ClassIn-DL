@@ -1,0 +1,12 @@
+# 问题模板配置
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 文档
+    url: https://github.com/your-username/ClassIn-DL/wiki
+    about: 查看项目文档了解更多信息
+  - name: 💬 讨论区
+    url: https://github.com/your-username/ClassIn-DL/discussions
+    about: 在讨论区分享想法或提问
+  - name: 📧 联系维护者
+    url: mailto:your-email@example.com
+    about: 通过邮件联系维护者
