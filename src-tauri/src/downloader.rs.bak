@@ -1,0 +1,130 @@
+use crate::models::{DownloadStatus, ProgressUpdate};
+use tokio::sync::mpsc;
+use anyhow::Result;
+use tokio::io::AsyncWriteExt;
+use futures_util::stream::StreamExt;
+
+/// Manager for concurrent video downloads
+pub struct DownloadManager {
+    max_concurrent: usize,
+    max_threads: usize,
+}
+
+impl DownloadManager {
+    pub fn new(max_concurrent: usize, max_threads: usize) -> Self {
+        Self { max_concurrent, max_threads }
+    }
+
+    pub async fn start_download(
+        &self,
+        video_id: u32,
+        url: String,
+        output_path: String,
+        progress_tx: mpsc::Sender<ProgressUpdate>,
+    ) -> Result<()> {
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .build()?;
+
+        // Send resolving status
+        progress_tx.send(ProgressUpdate {
+            video_id,
+            downloaded: 0,
+            total: 0,
+            speed: 0.0,
+            remaining_secs: 0,
+            status: DownloadStatus::Resolving,
+        }).await?;
+
+        // Get content length
+        let resp = client.head(&url).send().await?;
+        let total_size = resp.content_length().unwrap_or(0);
+
+        // Send start downloading status
+        progress_tx.send(ProgressUpdate {
+            video_id,
+            downloaded: 0,
+            total: total_size,
+            speed: 0.0,
+            remaining_secs: 0,
+            status: DownloadStatus::Downloading,
+        }).await?;
+
+        if total_size == 0 {
+            return Err(anyhow::anyhow!("Could not determine file size"));
+        }
+
+        // Download with progress tracking
+        let mut file = tokio::fs::File::create(&output_path).await?;
+
+        // Use reqwest streaming download
+        let stream = client.get(&url).send().await?.bytes_stream();
+        let mut downloaded: u64 = 0;
+        let mut last_speed_time = std::time::Instant::now();
+        let mut last_downloaded = 0u64;
+
+        let mut stream = stream.take(self.max_threads);
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(bytes) => {
+                    let bytes_len = bytes.len() as u64;
+                    file.write(&bytes).await?;
+                    downloaded += bytes_len;
+
+                    // Calculate speed every second
+                    let now = std::time::Instant::now();
+                    if now.duration_since(last_speed_time).as_secs() >= 1 {
+                        let elapsed = now.duration_since(last_speed_time).as_secs_f64();
+                        let delta = downloaded - last_downloaded;
+                        let speed = delta as f64 / elapsed;
+                        let remaining = if total_size > downloaded {
+                            ((total_size - downloaded) as f64 / speed) as u64
+                        } else {
+                            0
+                        };
+                        progress_tx.send(ProgressUpdate {
+                            video_id,
+                            downloaded,
+                            total: total_size,
+                            speed,
+                            remaining_secs: remaining,
+                            status: DownloadStatus::Downloading,
+                        }).await?;
+                        last_speed_time = now;
+                        last_downloaded = downloaded;
+                    }
+                }
+                Err(e) => {
+                    progress_tx.send(ProgressUpdate {
+                        video_id,
+                        downloaded,
+                        total: total_size,
+                        speed: 0.0,
+                        remaining_secs: 0,
+                        status: DownloadStatus::Failed,
+                    }).await?;
+                    return Err(e.into());
+                }
+            }
+        }
+
+        file.flush().await?;
+
+        // Mark as completed
+        progress_tx.send(ProgressUpdate {
+            video_id,
+            downloaded,
+            total: total_size,
+            speed: 0.0,
+            remaining_secs: 0,
+            status: DownloadStatus::Completed,
+        }).await?;
+
+        Ok(())
+    }
+
+    pub async fn cancel_download(&self, _video_id: u32) {
+        // Cancellation is handled via progress channel close
+        // In a full implementation, you'd track active tasks and send Cancelled status
+    }
+}
