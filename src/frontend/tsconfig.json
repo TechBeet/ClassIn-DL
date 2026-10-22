@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "paths": {
+      "$lib/*": ["src/lib/*"],
+      "$routes/*": ["src/routes/*"]
+    },
+    "types": ["svelte"]
+  },
+  "include": ["src", "node_modules"],
+  "references": [{ "path": "./tsconfig.svelte.json" }]
+}
