@@ -1,10 +1,10 @@
 [package]
 name = "classin-dl"
 version = "2.0.0"
-description = "ClassIn视频解析下载工具 - Tauri 2.x版本"
-authors = [""]
+description = "ClassIn 视频解析下载工具 - Tauri 2.x 版本"
+authors = ["MingHao Zhou <2130606191@qq.com>"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/2130606191/ClassIn-DL"
 edition = "2021"
 rust-version = "1.88.0"
 
@@ -17,9 +17,10 @@ tauri-build = { version = "2", features = [] }
 # Tauri 2.x core
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
 
 # Async runtime
-tokio = { version = "1", features = ["full", "sync"] }
+tokio = { version = "1", features = ["full", "sync", "rt-multi-thread"] }
 reqwest = { version = "0.12", features = ["stream", "json", "gzip", "deflate", "rustls-tls"] }
 futures-util = "0.3"
 tokio-util = "0.7"
@@ -42,3 +43,8 @@ lazy_static = "1.4"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 num_cpus = "1.16"
+log = "0.4"
+env_logger = "0.11"
+
+# For broadcast channel and download range support
+hyper = { version = "0.14", features = ["client", "http1", "http2", "server"] }
