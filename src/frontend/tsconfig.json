@@ -6,12 +6,8 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "paths": {
-      "$lib/*": ["src/lib/*"],
-      "$routes/*": ["src/routes/*"]
-    },
+    "esModuleInterop": true,
     "types": ["svelte"]
   },
-  "include": ["src", "node_modules"],
-  "references": [{ "path": "./tsconfig.svelte.json" }]
+  "include": ["src/**/*.ts", "src/**/*.svelte"]
 }
