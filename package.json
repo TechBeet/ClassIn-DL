@@ -1,0 +1,27 @@
+{
+  "name": "classin-downloader",
+  "version": "2.0.0",
+  "description": "ClassIn 视频解析下载工具 - Rust + Tauri 2.x 重写版",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/2130606191/ClassIn-DL.git"
+  },
+  "scripts": {
+    "dev": "npm --prefix src/frontend run dev",
+    "build": "npm --prefix src/frontend run build",
+    "check": "npm --prefix src/frontend exec svelte-check -- --tsconfig ./tsconfig.json",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "lint": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
