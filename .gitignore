@@ -20,3 +20,15 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.temp
+
+# 构建/运行日志（开发时产生）
+t_*.txt
+run.log
+build.log
+sc.log
+b.log
+shot_*.png
+ui_*.png
+
+# Tauri 生成
+src-tauri/gen/schemas/
