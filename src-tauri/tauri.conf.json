@@ -6,21 +6,24 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "../frontend",
-    "distDir": "../frontend",
-    "frontendDist": "../frontend/dist"
+    "devUrl": "http://127.0.0.1:8899",
+    "frontendDist": "../src/frontend/dist"
   },
   "app": {
     "windows": [
       {
-        "title": "ClassIn视频下载工具",
+        "title": "ClassIn Video Downloader",
         "width": 1280,
-        "height": 720,
-        "minWidth": 800,
-        "minHeight": 480,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
         "resizable": true,
         "maximizable": true,
-        "decorations": true
+        "decorations": true,
+        "center": true,
+        "theme": null,
+        "visible": true,
+        "shadow": true
       }
     ],
     "security": {
@@ -29,13 +32,7 @@
   },
   "bundle": {
     "active": true,
-    "windows": {
-      "certificatePath": "",
-      "certificatePassword": ""
-    },
-    "icon": ["icons/icon.ico", "icons/icon.png", "icons/icon.svg"]
-  },
-  "updater": {
-    "active": false
+    "icon": ["icons/icon.ico", "icons/icon.png", "icons/icon.svg"],
+    "targets": "all"
   }
 }
