@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "npm --prefix src/frontend run dev",
     "build": "npm --prefix src/frontend run build",
-    "check": "npm --prefix src/frontend exec svelte-check -- --tsconfig ./tsconfig.json",
+    "check": "npm --prefix src/frontend exec svelte-check -- --tsconfig src/frontend/tsconfig.json",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
