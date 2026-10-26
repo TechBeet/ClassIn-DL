@@ -5,6 +5,7 @@ use anyhow::Result;
 #[derive(Debug, Clone)]
 pub struct TsSegment {
     pub uri: String,
+    #[allow(dead_code)]
     pub duration: f64,
 }
 
@@ -12,7 +13,9 @@ pub struct TsSegment {
 #[derive(Debug)]
 pub struct M3u8Playlist {
     pub segments: Vec<TsSegment>,
+    #[allow(dead_code)]
     pub base_url: String,
+    #[allow(dead_code)]
     pub is_playlist: bool,
 }
 
@@ -49,12 +52,12 @@ impl M3u8Playlist {
             // Resolve relative URI
             let uri = if line.starts_with("http://") || line.starts_with("https://") {
                 line.to_string()
-            } else if line.starts_with('/') {
+            } else if let Some(stripped) = line.strip_prefix('/') {
                 // Absolute path - need the scheme and host from base_url
                 let scheme_end = url_base.find("://").unwrap_or(url_base.len());
                 let rest = &url_base[scheme_end + 3..];
                 let host_end = rest.find('/').unwrap_or(rest.len());
-                format!("{}://{}/{}", &url_base[..scheme_end], &rest[..host_end], &line[1..])
+                format!("{}://{}/{}", &url_base[..scheme_end], &rest[..host_end], stripped)
             } else {
                 format!("{}/{}", url_base, line)
             };
