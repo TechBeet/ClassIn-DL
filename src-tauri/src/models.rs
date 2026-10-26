@@ -17,21 +17,17 @@ pub enum DownloadStatus {
     Paused,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Status color mapped to a CSS color string at the UI layer.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum StatusColor {
+    #[default]
     Gray,
     Orange,
     Green,
     Red,
     Yellow,
 }
-
-impl Default for StatusColor {
-    fn default() -> Self {
-        StatusColor::Gray
-    }
-}
-
 /// Column widths saved from user preferences
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ColumnWidths {
@@ -126,6 +122,8 @@ impl VideoItem {
     }
 }
 
+/// Format bytes into human readable string for UI display.
+#[allow(dead_code)]
 pub fn format_size(bytes: u64) -> String {
     if bytes >= 1 << 30 {
         format!("{:.2} GB", bytes as f64 / (1 << 30) as f64)
@@ -138,6 +136,8 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+/// Format bytes-per-second into human readable string for UI display.
+#[allow(dead_code)]
 pub fn format_speed(bps: f64) -> String {
     if bps >= (1 << 30) as f64 {
         format!("{:.2} GB/s", bps / (1 << 30) as f64)
@@ -150,8 +150,9 @@ pub fn format_speed(bps: f64) -> String {
     }
 }
 
-/// Progress update message emitted from the download manager to the frontend.
+/// Progress update message emitted from the download manager to the frontend via Tauri IPC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ProgressUpdate {
     pub video_id: u32,
     pub downloaded: u64,
@@ -182,7 +183,10 @@ impl ProgressUpdate {
 }
 
 /// Human readable label for a download status (matches the WPF `DisplayStatus`).
+/// Kept for reference; frontend uses raw status strings from IPC.
+#[allow(dead_code)]
 impl DownloadStatus {
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             DownloadStatus::Waiting => "等待中",
@@ -197,7 +201,8 @@ impl DownloadStatus {
     }
 }
 
-/// Format seconds into HH:MM:SS
+/// Format seconds into HH:MM:SS. Kept for reference; frontend computes remaining time locally.
+#[allow(dead_code)]
 pub fn format_time(seconds: u64) -> String {
     if seconds == u64::MAX {
         return "Unknown".to_string();
