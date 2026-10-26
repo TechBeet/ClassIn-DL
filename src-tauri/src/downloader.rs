@@ -13,11 +13,10 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, Semaphore};
 
-const UA: &str = concat!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const REFERER: &str = "https://www.eeo.cn/";
 const MAX_RETRIES: u32 = 4;
 const UI_THROTTLE_MS: u64 = 100;
-const CHUNK: usize = 65536;
 pub const EVT_PROGRESS: &str = "dl-progress";
 pub const EVT_FINISHED: &str = "dl-finished";
 
@@ -27,7 +26,6 @@ fn emit(app: &AppHandle, u: ProgressUpdate) {
     }
 }
 
-fn part_path(p: &Path) -> PathBuf { p.with_extension("part") }
 fn resume_path(p: &Path) -> PathBuf { p.with_extension("json") }
 
 fn build_client() -> Result<reqwest::Client> {
@@ -62,15 +60,14 @@ struct TaskControl { cancelled: Arc<AtomicBool>, paused: Arc<AtomicBool> }
 
 #[derive(Clone)]
 pub struct DownloadManager {
-    max_concurrent: usize,
     max_threads: usize,
     tasks: Arc<Mutex<HashMap<u32, TaskControl>>>,
     global_cancel: Arc<AtomicBool>,
 }
 
 impl DownloadManager {
-    pub fn new(max_concurrent: usize, max_threads: usize) -> Self {
-        Self { max_concurrent, max_threads, tasks: Default::default(), global_cancel: Default::default() }
+    pub fn new(_max_concurrent: usize, max_threads: usize) -> Self {
+        Self { max_threads, tasks: Default::default(), global_cancel: Default::default() }
     }
 
     pub async fn start_downloads(
@@ -99,6 +96,7 @@ impl DownloadManager {
             let gc = self.global_cancel.clone();
             let tasks = self.tasks.clone();
             let threads = self.max_threads;
+            let sem_clone = sem.clone();
             tokio::spawn(async move {
                 let _p = permit;
                 let is_hls = m3u8::is_m3u8_url(&video.url);
@@ -115,6 +113,7 @@ impl DownloadManager {
                 let status = match &res { Ok(_) => DownloadStatus::Completed, Err(_) => DownloadStatus::Failed };
                 emit(&app2, ProgressUpdate::new(video.id, status.clone(), "已完成"));
                 let _ = app2.emit(EVT_FINISHED, (video.id, status));
+                drop(sem_clone);
             });
         }
         Ok(())
@@ -129,7 +128,7 @@ impl DownloadManager {
     pub async fn cancel_all(&self) {
         self.global_cancel.store(true, Ordering::SeqCst);
         let tasks = self.tasks.lock().await;
-        for (_, t) in tasks.iter() {
+        for t in tasks.values() {
             t.cancelled.store(true, Ordering::SeqCst);
         }
     }
@@ -250,7 +249,7 @@ async fn hls_download(
     let url = &video.url;
     emit(app, ProgressUpdate::new(video.id, DownloadStatus::Resolving, "解析M3U8"));
     let playlist_text = client.get(url).header("Referer", REFERER).send().await?.text().await?;
-    let base = url.strip_suffix(url.split('/').last().unwrap_or("")).unwrap_or(url);
+    let base = url.strip_suffix(url.split('/').next_back().unwrap_or("")).unwrap_or(url);
     let playlist = m3u8::M3u8Playlist::parse(&playlist_text, base).context("parse m3u8")?;
     let segments = playlist.segments;
     let temp_dir = out_path.with_extension("parts");
@@ -267,6 +266,8 @@ async fn hls_download(
         if !p_exists {
             let uri = seg.uri.clone();
             let cli = client.clone();
+            let sem_owned = sem.clone().acquire_owned().await.context("semaphore")?;
+            let done_clone = done.clone();
             tokio::spawn(async move {
                 let result = match cli.get(&uri).header("Referer", REFERER).send().await {
                     Ok(r) => r.bytes().await.ok(),
@@ -275,24 +276,16 @@ async fn hls_download(
                 if let Some(bytes) = result {
                     std::fs::write(&p, &bytes).ok();
                 }
+                done_clone.fetch_add(1, Ordering::SeqCst);
+                drop(sem_owned);
             });
-            {
-                let _permit = sem.clone().acquire_owned().await.context("semaphore")?;
-                // permit is automatically dropped when out of scope
-            }
         }
     }
     // Wait for all segments
     loop {
         if global.load(Ordering::SeqCst) || ctrl.cancelled.load(Ordering::SeqCst) { return Err(anyhow::anyhow!("cancelled")); }
         tokio::time::sleep(Duration::from_millis(100)).await;
-        let cur = done.load(Ordering::SeqCst);
-        let _ = cur;
-        let f: u64 = match std::fs::read_dir(&temp_dir) {
-            Ok(rd) => rd.flatten().filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("ts")).count() as u64,
-            Err(_) => continue,
-        };
-        done.store(f, Ordering::SeqCst);
+        let f = done.load(Ordering::SeqCst);
         if f >= total_segs as u64 { break; }
         let pct = f as f64 / total_segs as f64 * 100.0;
         emit(app, ProgressUpdate { video_id: video.id, downloaded: f * 1024, total: total_segs as u64 * 1024, speed: pct, remaining_secs: 0, status: DownloadStatus::Downloading, phase: format!("分段下载 {}/{}", f, total_segs), speed_total: 0.0, completed_count: 0 });
