@@ -52,6 +52,8 @@ impl ClipboardWatcher {
     }
 
     /// Wait until cancelled or until the timeout elapses. Returns true when cancelled.
+    /// Note: Currently unused; kept for potential future use.
+    #[allow(dead_code)]
     async fn wait_or_cancel(&self, timeout: Duration) -> bool {
         if self.is_cancelled() {
             return true;
