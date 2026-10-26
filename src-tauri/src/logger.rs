@@ -5,10 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 
 static LOG_FILE_PATH: &str = "VideoDownloader.log";
+#[allow(dead_code)]
 static MAX_LOG_ENTRIES: usize = 500;
 static ENTRY_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Write a log entry to the log file
+#[allow(dead_code)]
 pub fn write_log(message: &str) -> Result<()> {
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let log_line = format!("[{}] {}\n", timestamp, message);
@@ -48,7 +50,7 @@ pub fn read_log() -> Result<Vec<String>> {
     let reader = BufReader::new(file);
     let entries: Vec<String> = reader
         .lines()
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .collect();
     Ok(entries)
 }
