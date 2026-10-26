@@ -278,7 +278,7 @@
 <!-- Context Menu -->
 {#if contextMenu}
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<div class="ctx-backdrop" onclick={closeContextMenu}></div>
+<div class="ctx-backdrop" role="presentation" onclick={closeContextMenu} onkeydown={(e) => { if (e.key === 'Escape') closeContextMenu(); }}></div>
 <div class="context-menu" style="top:{contextMenu.y}px;left:{contextMenu.x}px">
   {#if contextMenu.video}
     <button class="ctx-item" role="menuitem" onclick={() => { pauseOne(contextMenu?.video?.id ?? 0); closeContextMenu(); }}>⏸ 暂停</button>
@@ -357,16 +357,15 @@
         <button class="small" onclick={clearCompleted}>清除已完成</button>
       </div>
     </div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="table-container" role="grid" oncontextmenu={(e) => onContextMenu(e, null)}>
+    <div class="table-container" role="region" aria-label="视频列表" oncontextmenu={(e) => onContextMenu(e, null)}>
       <table class="video-table">
         <thead>
           <tr>
-            <th style="width:{widths.idx}px"><div class="col-header" onclick={() => sortBy('idx')}>#</div><div class="col-resize" onmousedown={(e) => startResize('idx', e)}></div></th>
-            <th style="width:{widths.name}px"><div class="col-header" onclick={() => sortBy('name')}>名称 {sortCol === 'name' ? (sortAsc ? '↑' : '↓') : ''}</div><div class="col-resize" onmousedown={(e) => startResize('name', e)}></div></th>
-            <th style="width:{widths.size}px"><div class="col-header" onclick={() => sortBy('size')}>大小 {sortCol === 'size' ? (sortAsc ? '↑' : '↓') : ''}</div><div class="col-resize" onmousedown={(e) => startResize('size', e)}></div></th>
+            <th style="width:{widths.idx}px"><button class="col-header" type="button" onclick={() => sortBy('idx')} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy('idx'); } }}>#</button><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('idx', e)}></div></th>
+            <th style="width:{widths.name}px"><button class="col-header" type="button" onclick={() => sortBy('name')} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy('name'); } }}>名称 {sortCol === 'name' ? (sortAsc ? '↑' : '↓') : ''}</button><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('name', e)}></div></th>
+            <th style="width:{widths.size}px"><button class="col-header" type="button" onclick={() => sortBy('size')} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy('size'); } }}>大小 {sortCol === 'size' ? (sortAsc ? '↑' : '↓') : ''}</button><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('size', e)}></div></th>
             <th style="width:{widths.progress}px">进度</th>
-            <th style="width:{widths.status}px"><div class="col-header" onclick={() => sortBy('status')}>状态</div><div class="col-resize" onmousedown={(e) => startResize('status', e)}></div></th>
+            <th style="width:{widths.status}px"><button class="col-header" type="button" onclick={() => sortBy('status')} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy('status'); } }}>状态</button><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('status', e)}></div></th>
             <th style="width:{widths.action}px">操作</th>
           </tr>
         </thead>
@@ -425,7 +424,7 @@
   --shadow: 0 1px 4px rgba(0,0,0,0.08); --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
   --radius: 8px; --radius-sm: 4px;
 }
-[data-theme="dark"] {
+:global([data-theme="dark"]) {
   --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-tertiary: #334155;
   --bg-card: #1e293b; --bg-hover: #2d3f54; --border: #334155; --border-hover: #475569;
   --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b;
@@ -484,7 +483,7 @@ button.small { padding: 3px 8px; font-size: 11px; }
 .video-table th, .video-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .video-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-tertiary); }
 .video-table th { font-weight: 600; color: var(--text-secondary); font-size: 11px; }
-.col-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; }
+.col-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; font: inherit; color: inherit; }
 .col-header:hover { color: var(--accent); }
 .col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 4px; cursor: col-resize; background: transparent; }
 .video-table th { position: relative; }
