@@ -115,7 +115,7 @@ fn extract_urls_from_array(value: &serde_json::Value, lesson_name: &str) -> Opti
 
 fn format_url_name(url: &str, default_index: u32) -> String {
     let path = url.split('?').collect::<Vec<&str>>()[0];
-    let filename = path.split('/').last().unwrap_or("");
+    let filename = path.split('/').next_back().unwrap_or("");
     if let Some(ext_pos) = filename.rfind('.') {
         let name = &filename[..ext_pos];
         if name.len() > 1 && !name.chars().all(|c| c.is_ascii_digit()) {
@@ -127,4 +127,122 @@ fn format_url_name(url: &str, default_index: u32) -> String {
 
 fn is_valid_url(url: &str) -> bool {
     url.len() > 20 && url.contains('.') && (url.starts_with("http://") || url.starts_with("https://"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_parse_classin_json_lesson_data() {
+        let json = r#"{
+            "error_info": {"errno": 1, "error": "程序正常执行"},
+            "data": {
+                "lessonId": 874404893,
+                "lessonName": "《儒林外史》- 4",
+                "lessonData": {
+                    "lessonStatus": 1,
+                    "vodList": [],
+                    "fileList": [
+                        {
+                            "FileName": "",
+                            "Playset": [
+                                {
+                                    "Definition": "0",
+                                    "Url": "https://playback.eeo.cn/794b4a11vodbj1252412222/c853dc5a1397757906862292684/f0.mp4"
+                                }
+                            ],
+                            "Size": "388497916",
+                            "Duration": 3995
+                        },
+                        {
+                            "FileName": "20250308-L2精读《儒林外史》",
+                            "Playset": [
+                                {
+                                    "Definition": "0",
+                                    "Url": "https://playback.eeo.cn/794b4a11vodbj1252412222/7cdf98201397757906895625189/XcGaajaEfYcA.mp4"
+                                }
+                            ],
+                            "Size": "1011954082",
+                            "Duration": 4286
+                        }
+                    ]
+                }
+            }
+        }"#;
+
+        let videos = parse_videos(json, 5).await.unwrap();
+        assert_eq!(videos.len(), 2);
+        assert!(videos[0].url.starts_with("https://playback.eeo.cn"));
+        assert!(videos[1].url.starts_with("https://playback.eeo.cn"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_classin_json_tangshi_lesson() {
+        let json = r#"{
+            "error_info": {"errno": 1},
+            "data": {
+                "lessonName": "【唐诗妙赏】李商隐 - 4",
+                "lessonData": {
+                    "fileList": [
+                        {
+                            "FileName": "2025-2-26【唐诗妙赏】李商隐",
+                            "Playset": [
+                                {
+                                    "Url": "https://playback.eeo.cn/794b4a11vodbj1252412222/bef3c64b1397757906128673131/Z3TLUMzV6d8A.mp4"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }"#;
+
+        let videos = parse_videos(json, 5).await.unwrap();
+        assert_eq!(videos.len(), 1);
+        assert!(videos[0].url.contains("playback.eeo.cn"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_url_regex() {
+        let content = r#"Some text https://example.com/video1.mp4 and https://cdn.example.com/stream.m3u8?token=abc"#;
+        let videos = parse_videos(content, 2).await.unwrap();
+        assert_eq!(videos.len(), 2);
+        assert!(videos[0].url.contains(".mp4"));
+        assert!(videos[1].url.contains(".m3u8"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_empty_content() {
+        let videos = parse_videos("", 5).await.unwrap();
+        assert!(videos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_invalid_url() {
+        let content = r#"http://short not a url ftp://wrong.protocol.com/video.mp4"#;
+        let videos = parse_videos(content, 2).await.unwrap();
+        assert!(videos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_nested_playset_urls() {
+        let json = r#"{
+            "data": {
+                "lessonName": "Test Lesson",
+                "lessonData": {
+                    "fileList": [
+                        {"Playset": [{"Url": "https://example.com/lesson1.mp4"}]},
+                        {"Playset": [{"Url": "https://example.com/lesson2.mp4"}, {"Url": "https://example.com/lesson3.mp4"}]}
+                    ]
+                }
+            }
+        }"#;
+
+        let videos = parse_videos(json, 3).await.unwrap();
+        assert_eq!(videos.len(), 3);
+        for video in &videos {
+            assert!(video.url.starts_with("https://example.com"));
+        }
+    }
 }
