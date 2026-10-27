@@ -48,7 +48,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: x86_64-pc-windows-msvc
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
       - name: Package Windows x64
         run: |
           New-Item -ItemType Directory -Force -Path release
@@ -72,7 +72,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: aarch64-pc-windows-msvc
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target aarch64-pc-windows-msvc
       - name: Package Windows ARM64
         run: |
           New-Item -ItemType Directory -Force -Path release
@@ -96,7 +96,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: aarch64-apple-darwin
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
       - name: Package macOS ARM64
         run: |
           mkdir -p release
@@ -120,7 +120,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: x86_64-apple-darwin
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-apple-darwin
       - name: Package macOS x64
         run: |
           mkdir -p release
@@ -148,7 +148,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: x86_64-unknown-linux-gnu
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-unknown-linux-gnu
       - name: Package Linux x64 glibc
         run: |
           mkdir -p release
@@ -179,7 +179,7 @@ jobs:
       - name: Build release
         env:
           RUSTFLAGS: -C link-arg=-lgcc
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target aarch64-unknown-linux-gnu
       - name: Package Linux ARM64
         run: |
           mkdir -p release
@@ -206,7 +206,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: x86_64-unknown-linux-musl
       - name: Build release
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target x86_64-unknown-linux-musl
       - name: Package Linux x64 musl
         run: |
           mkdir -p release
