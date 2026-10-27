@@ -25,13 +25,35 @@
 
 ## [未发布]
 
-### 计划添加
+### 🎉 新增
 
-- [ ] 计划中的功能
+- 添加播放列表管理功能（待实现）
 
-### 待修复
+### 🔧 变更
 
-- [ ] 待解决的 bug
+- 重构 logger 模块：添加可注入路径支持测试，移除全局状态竞态
+- 重构 m3u8 模块：修复 EXTINF 解析逻辑 bug（原来在不可达分支中）
+- 重构 settings 模块：暴露内部函数用于单元测试
+- 重构 models 模块：手动实现 SortConfig 的 Default（ascending=true 匹配前端）
+
+### ✅ 测试
+
+- 新增 78 个单元测试，总测试数从 10 增至 88
+- 覆盖所有模块：models, m3u8, parser, settings, logger, clipboard, downloader
+- 修复并发测试竞争条件（logger 使用 Mutex 序列化）
+- 改进测试隔离性（每个测试使用独立临时文件）
+
+### 🐛 修复
+
+- 修复 M3U8 EXTINF 解析逻辑：现在正确跳过注释行并设置当前 duration
+- 修复文件名清理：移除尾部下划线
+- 修复断点续传路径：使用 with_added_extension 避免扩展名冲突
+- 修复 SortConfig 默认值：ascending 默认为 true（匹配前端）
+
+### 📝 文档
+
+- 添加 FEATURE_GAP_ANALYSIS.md：详细对比 WPF 参考项目与 Rust/Tauri 实现的差异
+- 记录已知功能缺口：播放列表管理、云同步、定时下载
 
 ---
 
