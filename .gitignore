@@ -1,34 +1,57 @@
-﻿# 依赖目录
+﻿# Dependencies
 node_modules/
 src-tauri/target/
+src-tauri/gen/
 
-# 构建输出
-dist/
+# Frontend build output
+src/frontend/dist/
 
-# IDE
+# IDE and editors
 .vscode/
 .idea/
 
-# 日志
+# Logs and temporary files
 *.log
 logs/
-
-# 系统文件
-Thumbs.db
-.DS_Store
-
-# 临时文件
 *.tmp
 *.temp
 
-# 构建/运行日志（开发时产生）
-t_*.txt
+# Test/Debug output files
+*_out.txt
+*_out2.txt
+*_out3.txt
+*_out4.txt
+*_out5.txt
+*_out6.txt
+*_out7.txt
+cargo_test_out.txt
+check_out.txt
+push_out.txt
+test_out.txt
+t_err.txt
+t_fix.txt
+check.log
 run.log
 build.log
 sc.log
 b.log
+c_check.log
+c_err.log
+VideoDownloader.log
+build.pid
+*.pid
+
+# Screenshots and debug images
 shot_*.png
 ui_*.png
 
-# Tauri 生成
+# OS generated files
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Root package-lock.json (frontend lockfile is kept separately)
+/package-lock.json
+
+# Tauri generated schemas
 src-tauri/gen/schemas/
