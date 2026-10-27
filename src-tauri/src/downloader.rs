@@ -26,7 +26,9 @@ fn emit(app: &AppHandle, u: ProgressUpdate) {
     }
 }
 
-fn resume_path(p: &Path) -> PathBuf { p.with_extension("json") }
+fn resume_path(p: &Path) -> PathBuf {
+    p.with_added_extension("json")
+}
 
 fn build_client() -> Result<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
@@ -140,6 +142,117 @@ impl DownloadManager {
     }
 
     pub fn open_download_folder(path: &str) { let _ = open::that(path); }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resume_path_extension() {
+        let path = PathBuf::from("C:\\Downloads\\video.mp4");
+        assert_eq!(resume_path(&path), PathBuf::from("C:\\Downloads\\video.mp4.json"));
+    }
+
+    #[test]
+    fn test_build_client_creates_successfully() {
+        let client = build_client();
+        assert!(client.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_download_manager_new() {
+        let mgr = DownloadManager::new(5, 16);
+        assert_eq!(mgr.max_threads, 16);
+        assert!(mgr.tasks.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_download_removes_task() {
+        let mgr = DownloadManager::new(5, 16);
+        let video_id = 1;
+        // Insert a dummy task
+        {
+            let mut lock = mgr.tasks.lock().await;
+            lock.insert(video_id, TaskControl {
+                cancelled: Arc::new(AtomicBool::new(false)),
+                paused: Arc::new(AtomicBool::new(false)),
+            });
+        }
+        mgr.cancel_download(video_id).await;
+        assert!(mgr.tasks.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_all_sets_global_flag() {
+        let mgr = DownloadManager::new(5, 16);
+        assert!(!mgr.global_cancel.load(Ordering::SeqCst));
+        mgr.cancel_all().await;
+        assert!(mgr.global_cancel.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_set_paused_updates_task() {
+        let mgr = DownloadManager::new(5, 16);
+        let video_id = 1;
+        {
+            let mut lock = mgr.tasks.lock().await;
+            lock.insert(video_id, TaskControl {
+                cancelled: Arc::new(AtomicBool::new(false)),
+                paused: Arc::new(AtomicBool::new(false)),
+            });
+        }
+        mgr.set_paused(video_id, true).await;
+        let guard = mgr.tasks.lock().await;
+        let task = guard.get(&video_id).unwrap();
+        assert!(task.paused.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_load_resume_nonexistent_file() {
+        let path = std::env::temp_dir().join("nonexistent-video.mp4");
+        let result = load_resume(&path);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_save_and_load_resume() {
+        let temp_dir = std::env::temp_dir().join("classin-dl-resume-test");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let path = temp_dir.join("video.mp4");
+        
+        let resume = DownloadResume {
+            video_id: 1,
+            url: "https://example.com/video.mp4".to_string(),
+            file_size: 1024 * 1024,
+            downloaded: 512 * 1024,
+            segments: vec![],
+            status: "partial".to_string(),
+        };
+        
+        save_resume(&path, &resume).unwrap();
+        let loaded = load_resume(&path).unwrap();
+        assert_eq!(loaded.video_id, 1);
+        assert_eq!(loaded.file_size, 1024 * 1024);
+        assert_eq!(loaded.downloaded, 512 * 1024);
+        
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_download_status_default() {
+        let status = DownloadStatus::default();
+        assert_eq!(status, DownloadStatus::Waiting);
+    }
+
+    #[test]
+    fn test_progress_update_minimal() {
+        let update = ProgressUpdate::new(1, DownloadStatus::Waiting, "Waiting");
+        assert_eq!(update.video_id, 1);
+        assert_eq!(update.speed, 0.0);
+        assert_eq!(update.remaining_secs, 0);
+    }
 }
 
 async fn download_one(

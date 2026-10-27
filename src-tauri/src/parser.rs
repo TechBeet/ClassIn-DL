@@ -245,4 +245,109 @@ mod tests {
             assert!(video.url.starts_with("https://example.com"));
         }
     }
+
+    #[tokio::test]
+    async fn test_parse_json_array_of_url_objects() {
+        let json = r#"{"lessonName":"Test", "videos": [{"url":"https://example.com/v1.mp4"}, {"url":"https://example.com/v2.m3u8"}]}"#;
+        let videos = parse_videos(json, 2).await.unwrap();
+        // Both the array traversal and the generic regex scan can pick up URLs,
+        // so we only assert that the expected URLs are present.
+        assert!(videos.iter().any(|v| v.url.contains("v1.mp4")));
+        assert!(videos.iter().any(|v| v.url.contains("v2.m3u8")));
+    }
+
+    #[tokio::test]
+    async fn test_parse_json_array_of_url_strings() {
+        let json = r#"{"lessonName":"T", "Playset": ["https://example.com/a.mp4", "https://example.com/b.mp4"]}"#;
+        let videos = parse_videos(json, 2).await.unwrap();
+        assert!(videos.iter().any(|v| v.url.contains("a.mp4")));
+        assert!(videos.iter().any(|v| v.url.contains("b.mp4")));
+    }
+
+    #[tokio::test]
+    async fn test_parse_invalid_json_falls_back() {
+        let videos = parse_videos("not json at all but has https://x.com/video.mp4", 2).await.unwrap();
+        assert_eq!(videos.len(), 1);
+        assert!(videos[0].url.contains("video.mp4"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_short_video_url_not_valid() {
+        // A URL that matches the regex but fails is_valid_url (too short / no dot)
+        let videos = parse_videos("https://x/mp4", 2).await.unwrap();
+        assert!(videos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_ts_extension_urls() {
+        let content = "https://cdn.example.com/segment001.ts";
+        let videos = parse_videos(content, 1).await.unwrap();
+        assert_eq!(videos.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_parse_mixed_plain_text_urls() {
+        let content = "download this: https://example.com/v.mp4 please";
+        let videos = parse_videos(content, 5).await.unwrap();
+        assert_eq!(videos.len(), 1);
+        assert!(videos[0].url.contains("v.mp4"));
+    }
+
+    #[test]
+    fn test_format_url_name_with_extension() {
+        assert_eq!(format_url_name("https://example.com/path/my_video.mp4", 1), "my_video");
+    }
+
+    #[test]
+    fn test_format_url_name_with_query() {
+        assert_eq!(format_url_name("https://example.com/path/video.m3u8?token=abc", 2), "video");
+    }
+
+    #[test]
+    fn test_format_url_name_numeric() {
+        assert_eq!(format_url_name("https://example.com/123.mp4", 1), "Video_1");
+    }
+
+    #[test]
+    fn test_format_url_name_no_slash() {
+        assert_eq!(format_url_name("video_file.mp4", 1), "video_file");
+    }
+
+    #[test]
+    fn test_is_valid_url_http() {
+        assert!(is_valid_url("https://example.com/video.mp4"));
+        assert!(is_valid_url("http://example.com/video.mp4"));
+    }
+
+    #[test]
+    fn test_is_valid_url_invalid() {
+        assert!(!is_valid_url("ftp://example.com/video.mp4"));
+        assert!(!is_valid_url("short"));
+        assert!(!is_valid_url("https://x"));
+        assert!(!is_valid_url("https://x.mp4")); // len > 20 required
+    }
+
+    #[test]
+    fn test_extract_url_from_object_url_key() {
+        let json = serde_json::json!({"url": "https://example.com/v.mp4"});
+        assert_eq!(extract_url_from_object(&json), Some("https://example.com/v.mp4".to_string()));
+    }
+
+    #[test]
+    fn test_extract_url_from_object_video_key() {
+        let json = serde_json::json!({"video": "https://example.com/v.mp4"});
+        assert_eq!(extract_url_from_object(&json), Some("https://example.com/v.mp4".to_string()));
+    }
+
+    #[test]
+    fn test_extract_url_from_object_invalid() {
+        let json = serde_json::json!({"name": "not a url"});
+        assert_eq!(extract_url_from_object(&json), None);
+    }
+
+    #[test]
+    fn test_extract_url_from_object_not_object() {
+        let json = serde_json::json!("string value");
+        assert_eq!(extract_url_from_object(&json), None);
+    }
 }

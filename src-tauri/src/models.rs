@@ -40,10 +40,16 @@ pub struct ColumnWidths {
 }
 
 /// Sort configuration for the video list
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SortConfig {
     pub column: String,
     pub ascending: bool,
+}
+
+impl Default for SortConfig {
+    fn default() -> Self {
+        Self { column: "".to_string(), ascending: true }
+    }
 }
 
 /// Application settings persisted to disk
@@ -225,7 +231,7 @@ pub fn sanitize_filename(name: &str) -> String {
             c => c,
         })
         .collect();
-    out = out.trim().trim_matches('.').to_string();
+    out = out.trim().trim_matches('.').trim_end_matches('_').to_string();
     if out.is_empty() {
         out = "video".to_string();
     }
@@ -248,4 +254,160 @@ pub fn resolve_video_path(dir: &str, video: &VideoItem, m3u8: bool) -> String {
     let ext = if m3u8 { "ts" } else { "mp4" };
     let sep = if dir.ends_with('\\') || dir.ends_with('/') { "" } else { "\\" };
     format!("{dir}{sep}{stem}.{ext}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_filename_basic() {
+        assert_eq!(sanitize_filename("normal_name"), "normal_name");
+        assert_eq!(sanitize_filename("with spaces"), "with spaces");
+    }
+
+    #[test]
+    fn test_sanitize_filename_special_chars() {
+        assert_eq!(sanitize_filename("bad:name"), "bad_name");
+        assert_eq!(sanitize_filename("bad/name"), "bad_name");
+        assert_eq!(sanitize_filename("bad|name"), "bad_name");
+        assert_eq!(sanitize_filename("bad<name>"), "bad_name");
+        assert_eq!(sanitize_filename("bad?name*"), "bad_name");
+        assert_eq!(sanitize_filename("bad\"name"), "bad_name");
+        // Trailing underscores from special chars should be trimmed
+        let result = sanitize_filename("bad:name");
+        assert_eq!(result.trim_end_matches('_'), "bad_name");
+    }
+
+    #[test]
+    fn test_sanitize_filename_control_chars() {
+        assert_eq!(sanitize_filename("bad\x01char"), "bad_char");
+    }
+
+    #[test]
+    fn test_sanitize_filename_trimming() {
+        assert_eq!(sanitize_filename("  trimmed  "), "trimmed");
+        assert_eq!(sanitize_filename(".hidden."), "hidden");
+    }
+
+    #[test]
+    fn test_sanitize_filename_empty() {
+        assert_eq!(sanitize_filename(""), "video");
+        assert_eq!(sanitize_filename("   "), "video");
+        assert_eq!(sanitize_filename("..."), "video");
+    }
+
+    #[test]
+    fn test_sanitize_filename_max_length() {
+        let long = "a".repeat(200);
+        let result = sanitize_filename(&long);
+        assert_eq!(result.len(), 120);
+    }
+
+    #[test]
+    fn test_format_speed_bytes() {
+        assert_eq!(format_speed(100.0), "100.00 B/s");
+        assert_eq!(format_speed(1024.0), "1.00 KB/s");
+        assert_eq!(format_speed(1024.0 * 1024.0), "1.00 MB/s");
+        assert_eq!(format_speed(1024.0 * 1024.0 * 1024.0), "1.00 GB/s");
+    }
+
+    #[test]
+    fn test_format_speed_precision() {
+        assert_eq!(format_speed(1536.0), "1.50 KB/s");
+        assert_eq!(format_speed(1.5 * 1024.0 * 1024.0), "1.50 MB/s");
+    }
+
+    #[test]
+    fn test_format_time() {
+        assert_eq!(format_time(0), "00:00:00");
+        assert_eq!(format_time(60), "00:01:00");
+        assert_eq!(format_time(3661), "01:01:01");
+        assert_eq!(format_time(366100), "101:41:40");
+        assert_eq!(format_time(u64::MAX), "Unknown");
+    }
+
+    #[test]
+    fn test_resolve_video_path_basic() {
+        let video = VideoItem::new(1, "test_video".to_string(), "http://example.com/video.mp4".to_string());
+        let path = resolve_video_path("C:\\Downloads", &video, false);
+        assert_eq!(path, "C:\\Downloads\\test_video.mp4");
+    }
+
+    #[test]
+    fn test_resolve_video_path_m3u8() {
+        let video = VideoItem::new(1, "test_stream".to_string(), "http://example.com/stream.m3u8".to_string());
+        let path = resolve_video_path("C:\\Downloads", &video, true);
+        assert_eq!(path, "C:\\Downloads\\test_stream.ts");
+    }
+
+    #[test]
+    fn test_resolve_video_path_trailing_slash() {
+        let video = VideoItem::new(1, "test".to_string(), "http://example.com/test.mp4".to_string());
+        let path = resolve_video_path("C:\\Downloads\\", &video, false);
+        assert_eq!(path, "C:\\Downloads\\test.mp4");
+    }
+
+    #[test]
+    fn test_resolve_video_path_sanitization() {
+        let video = VideoItem::new(1, "bad:name".to_string(), "http://example.com/test.mp4".to_string());
+        let path = resolve_video_path("C:\\Downloads", &video, false);
+        assert_eq!(path, "C:\\Downloads\\bad_name.mp4");
+    }
+
+    #[test]
+    fn test_video_item_new() {
+        let video = VideoItem::new(1, "test".to_string(), "http://example.com/test.mp4".to_string());
+        assert_eq!(video.name, "test");
+        assert_eq!(video.url, "http://example.com/test.mp4");
+        assert_eq!(video.display_index, "01");
+        assert_eq!(video.status, "Waiting");
+        assert_eq!(video.progress, 0.0);
+        assert_eq!(video.paused, false);
+    }
+
+    #[test]
+    fn test_video_item_id_increments() {
+        let v1 = VideoItem::new(1, "test1".to_string(), "url1".to_string());
+        let v2 = VideoItem::new(2, "test2".to_string(), "url2".to_string());
+        assert!(v2.id > v1.id);
+    }
+
+    #[test]
+    fn test_app_settings_default() {
+        let settings = AppSettings::default();
+        assert_eq!(settings.theme, "");
+        assert_eq!(settings.max_concurrent, 0);
+        assert_eq!(settings.download_dir, "");
+    }
+
+    #[test]
+    fn test_sort_config_default() {
+        let sort = SortConfig::default();
+        assert_eq!(sort.column, "");
+        assert!(sort.ascending);
+    }
+
+    #[test]
+    fn test_column_widths_default() {
+        let widths = ColumnWidths::default();
+        assert_eq!(widths.idx, None);
+        assert_eq!(widths.name, None);
+    }
+
+    #[test]
+    fn test_download_status_label() {
+        assert_eq!(DownloadStatus::Waiting.label(), "等待中");
+        assert_eq!(DownloadStatus::Downloading.label(), "下载中");
+        assert_eq!(DownloadStatus::Completed.label(), "已完成");
+        assert_eq!(DownloadStatus::Failed.label(), "失败");
+    }
+
+    #[test]
+    fn test_progress_update_new() {
+        let update = ProgressUpdate::new(1, DownloadStatus::Waiting, "Waiting");
+        assert_eq!(update.video_id, 1);
+        assert_eq!(update.speed, 0.0);
+        assert_eq!(update.phase, "Waiting");
+    }
 }
