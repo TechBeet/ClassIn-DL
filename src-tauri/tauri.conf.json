@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ClassIn Video Downloader",
+  "productName": "ClassIn视频下载工具",
   "version": "2.0.0",
-  "identifier": "com.classin.downloader",
+  "identifier": "com.classin.video.downloader",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -12,11 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "ClassIn Video Downloader",
+        "title": "Classin视频下载工具",
         "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 450,
         "resizable": true,
         "maximizable": true,
         "decorations": true,
