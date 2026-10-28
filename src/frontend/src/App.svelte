@@ -25,7 +25,7 @@
     download_dir: string;
   }
 
-  const DEFAULT_WIDTHS: ColumnWidths = { idx: 70, name: 280, size: 110, progress: 240, status: 160, action: 130 };
+  const DEFAULT_WIDTHS: ColumnWidths = { idx: 60, name: 300, size: 120, progress: 250, status: 180, action: 150 };
 
   let videos = $state<VideoItem[]>([]);
   let statusText = $state('就绪');
