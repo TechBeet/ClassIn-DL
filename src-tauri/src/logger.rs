@@ -23,6 +23,7 @@ fn log_path() -> PathBuf {
 }
 
 /// Override the log file path. Intended for tests and advanced configuration.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn set_log_path<P: Into<PathBuf>>(path: P) {
     if let Ok(mut w) = log_path_slot().write() {
         *w = path.into();
