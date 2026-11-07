@@ -1,0 +1,672 @@
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+
+  interface VideoItem {
+    id: number; display_index: string; name: string; url: string;
+    file_size: number; downloaded_bytes: number; status: string;
+    progress: number; current_speed: number; remaining_time_secs: number;
+    phase: string; error_message: string; selected?: boolean;
+    status_color?: string;
+  }
+  interface ProgressUpdate {
+    video_id: number; downloaded: number; total: number; speed: number;
+    remaining_secs: number; status: string; phase: string;
+    speed_total: number; completed_count: number;
+  }
+  interface ColumnWidths {
+    idx: number; name: number; size: number; progress: number; status: number; action: number;
+  }
+  interface AppSettings {
+    theme: string;
+    column_widths: ColumnWidths;
+    sort: { column: string; ascending: boolean };
+    max_concurrent: number;
+    download_dir: string;
+  }
+
+  const DEFAULT_WIDTHS: ColumnWidths = { idx: 60, name: 300, size: 120, progress: 250, status: 180, action: 150 };
+
+  let videos = $state<VideoItem[]>([]);
+  let statusText = $state('就绪');
+  let downloadDir = $state('');
+  let maxConcurrent = $state(5);
+  let maxThreads = $state(32);
+  let isParsing = $state(false);
+  let isDownloading = $state(false);
+  let errorBox = $state('');
+  let logs = $state<string[]>([]);
+  let inputText = $state('');
+  let widths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
+  let clipboardWatch = $state(true);
+  let parseProgress = $state(0);
+  let overallSpeed = $state(0);
+  let completedCount = $state(0);
+  let lastSelectedIndex = $state(-1);
+  let contextMenu = $state<{ x: number; y: number; video: VideoItem | null } | null>(null);
+  let draggingCol = $state<string | null>(null);
+  let dragStartX = $state(0);
+  let dragStartW = $state(0);
+
+  let unlisteners: UnlistenFn[] = [];
+  let pollTimer: ReturnType<typeof setInterval> | undefined;
+
+  const sortedVideos = $derived(videos);
+
+  const totalCount = $derived(videos.length);
+  const doneCount = $derived(videos.filter(v => isDone(v.status)).length);
+  const failedCount = $derived(videos.filter(v => v.status.toLowerCase().includes('fail')).length);
+  const activeCount = $derived(videos.filter(v => v.status.toLowerCase().includes('down')).length);
+  const selectedCount = $derived(videos.filter(v => v.selected).length);
+
+  function isDone(s: string) {
+    const l = s.toLowerCase();
+    return l.includes('done') || l.includes('complete') || l.includes('已完成');
+  }
+
+  function getStatusColor(status: string): string {
+    const s = status.toLowerCase();
+    if (s.includes('done') || s.includes('complete') || s.includes('已完成')) return '#4CAF50';
+    if (s.includes('fail') || s.includes('error') || s.includes('失败')) return '#F44336';
+    if (s.includes('cancel') || s.includes('取消')) return '#9E9E9E';
+    if (s.includes('pause') || s.includes('暂停')) return '#FF9800';
+    if (s.includes('partial') || s.includes('部分')) return '#00BCD4';
+    if (s.includes('down') || s.includes('下载')) return '#2196F3';
+    if (s.includes('resolv') || s.includes('解析')) return '#9C27B0';
+    if (s.includes('wait') || s.includes('等待')) return '#FF9800';
+    return '#607D8B';
+  }
+
+  onMount(async () => {
+    try { await invoke('show_window'); } catch(e) { console.error(e); }
+    await loadSettings();
+    await initApp();
+    unlisteners.push(await listen<ProgressUpdate>('dl-progress', (e) => applyProgress(e.payload)));
+    unlisteners.push(await listen<string>('clipboard-detected', (e) => {
+      if (clipboardWatch) { statusText = '检测到剪贴板内容，正在解析...'; void doParse(e.payload); }
+    }));
+    unlisteners.push(await listen('app-ready', async () => { statusText = '就绪'; try { await invoke('show_window'); } catch(e) { console.error(e); } }));
+  });
+
+  onDestroy(() => {
+    unlisteners.forEach(u => u());
+    if (pollTimer) clearInterval(pollTimer);
+  });
+
+  async function loadSettings() {
+    try {
+      const s = await invoke<AppSettings>('load_settings');
+      if (s.column_widths && (s.column_widths.idx || 0) > 0) {
+        widths = { ...DEFAULT_WIDTHS, ...s.column_widths } as ColumnWidths;
+      }
+      if (s.max_concurrent > 0) maxConcurrent = s.max_concurrent;
+      if (s.download_dir) downloadDir = s.download_dir;
+    } catch (e) { console.error(e); }
+  }
+
+  async function persistSettings() {
+    const payload: AppSettings = {
+      theme: 'light',
+      column_widths: widths,
+      sort: { column: '', ascending: true },
+      max_concurrent: Number(maxConcurrent),
+      download_dir: downloadDir,
+    };
+    try { await invoke('save_settings', { newSettings: payload }); }
+    catch (e) { console.error(e); }
+  }  async function initApp() {
+    try { const dir = await invoke<string>('get_default_dir'); if (!downloadDir) downloadDir = dir; } catch (e) { console.error(e); }
+    try { await invoke('initialize_log'); } catch (e) { console.error(e); }
+    pollTimer = setInterval(async () => { try { logs = (await invoke<string[]>('read_logs')) || []; } catch (e) { /* ignore */ } }, 2000);
+  }
+
+  function applyProgress(u: ProgressUpdate) {
+    const idx = videos.findIndex(v => v.id === u.video_id);
+    overallSpeed = u.speed_total || 0;
+    if (idx >= 0) {
+      const v = videos[idx];
+      v.downloaded_bytes = u.downloaded;
+      if (u.total > 0) v.file_size = u.total;
+      v.current_speed = u.speed;
+      v.remaining_time_secs = u.remaining_secs;
+      v.status = u.status;
+      v.phase = u.phase;
+      if (u.total > 0) v.progress = Math.min(100, (u.downloaded / u.total) * 100);
+      v.status_color = getStatusColor(u.status);
+    }
+    if (u.status === 'Completed' || u.status === '已完成') completedCount++;
+    if (u.status === 'Completed' || u.status === 'Failed') {
+      isDownloading = videos.some(x => x.status === 'Downloading' || x.status === 'Resolving');
+      if (!isDownloading) statusText = '下载完成 (' + doneCount + '/' + totalCount + ')';
+    }
+  }
+
+  async function copyCommand() {
+    isParsing = true; errorBox = ''; parseProgress = 20;
+    try { 
+      await invoke('copy_get_lesson_record_info'); 
+      parseProgress = 100;
+      statusText = '筛选文本已成功复制到剪贴板';
+    }
+    catch (e) { 
+      errorBox = '复制失败，请手动复制命令'; 
+      statusText = '复制失败';
+    }
+    finally { isParsing = false; parseProgress = 0; }
+  }
+
+  async function parseFromClipboard() {
+    isParsing = true; errorBox = ''; parseProgress = 20;
+    try { 
+      const clip = await invoke<string>('read_clipboard'); 
+      parseProgress = 60; 
+      await doParse(clip); 
+    }
+    catch (e) { 
+      errorBox = '读取剪贴板失败：' + String(e); 
+      statusText = '解析失败'; 
+    }
+    finally { isParsing = false; parseProgress = 0; }
+  }
+
+  async function doParse(content: string) {
+    parseProgress = 70;
+    const parsed = await invoke<VideoItem[]>('parse_videos', { content, maxConcurrent });
+    videos = parsed.map((v, i) => ({ ...v, display_index: v.display_index || String(i + 1) }));
+    parseProgress = 100;
+    if (parsed.length === 0) { errorBox = '未在内容中找到视频链接'; statusText = '未找到视频'; }
+    else { statusText = '已解析 ' + parsed.length + ' 个视频'; errorBox = ''; }
+  }
+
+  async function startDownloads() {
+    if (videos.length === 0) { errorBox = '没有可下载的视频'; return; }
+    isDownloading = true; errorBox = ''; statusText = '下载中...';
+    try { await invoke('start_downloads', { videos, dir: downloadDir, maxConcurrent }); }
+    catch (e) { errorBox = '下载错误: ' + String(e); statusText = '下载失败'; }
+  }
+
+  async function cancelAll() { try { await invoke('cancel_all_downloads'); statusText = '已请求取消'; } catch (e) { console.error(e); } }
+  async function cancelOne(id: number) { try { await invoke('cancel_download', { videoId: id }); } catch (e) { console.error(e); } }
+  async function pauseOne(id: number) { try { await invoke('pause_download', { videoId: id }); } catch (e) { console.error(e); } }
+  async function resumeOne(id: number) { try { await invoke('resume_download', { videoId: id }); } catch (e) { console.error(e); } }
+  async function selectDirectory() { try { downloadDir = await invoke<string>('select_directory'); void persistSettings(); } catch (e) { console.error(e); } }
+  async function openFolder() { try { await invoke('open_folder', { path: downloadDir }); } catch (e) { console.error(e); } }
+  async function copyUrl(url: string) { try { await invoke('write_clipboard', { text: url }); statusText = '已复制链接'; } catch (e) { console.error(e); } }
+
+  function removeVideo(id: number) { videos = videos.filter(v => v.id !== id); }
+  function clearCompleted() { videos = videos.filter(v => !isDone(v.status)); }
+  function selectAll() { videos.forEach(v => (v.selected = true)); }
+  function clearSelection() { videos.forEach(v => (v.selected = false)); }
+
+  function handleRowClick(video: VideoItem, index: number, e: MouseEvent) {
+    if (e.ctrlKey || e.metaKey) { video.selected = !video.selected; }
+    else if (e.shiftKey && lastSelectedIndex >= 0) {
+      const [s, en] = lastSelectedIndex < index ? [lastSelectedIndex, index] : [index, lastSelectedIndex];
+      for (let i = s; i <= en; i++) videos[i].selected = true;
+    } else {
+      videos.forEach(v => (v.selected = false));
+      video.selected = true;
+    }
+    lastSelectedIndex = index;
+  }
+
+  function startResize(col: keyof ColumnWidths, e: MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    draggingCol = col as string;
+    dragStartX = e.clientX;
+    dragStartW = widths[col];
+    const onMove = (ev: MouseEvent) => {
+      if (!draggingCol) return;
+      const delta = ev.clientX - dragStartX;
+      widths = { ...widths, [draggingCol]: Math.max(40, Math.round(dragStartW + delta)) };
+    };
+    const onUp = () => {
+      draggingCol = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      void persistSettings();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  function onContextMenu(e: MouseEvent, video: VideoItem | null) { e.preventDefault(); contextMenu = { x: e.clientX, y: e.clientY, video }; }
+  function closeContextMenu() { contextMenu = null; }
+
+  function formatSize(bytes: number): string {
+    if (!bytes) return '0 B';
+    if (bytes >= 1 << 30) return (bytes / (1 << 30)).toFixed(2) + ' GB';
+    if (bytes >= 1 << 20) return (bytes / (1 << 20)).toFixed(2) + ' MB';
+    if (bytes >= 1 << 10) return (bytes / (1 << 10)).toFixed(2) + ' KB';
+    return bytes + ' B';
+  }
+  function formatSpeed(bps: number): string {
+    if (!bps) return '';
+    if (bps >= 1 << 20) return (bps / (1 << 20)).toFixed(2) + ' MB/s';
+    if (bps >= 1 << 10) return (bps / (1 << 10)).toFixed(2) + ' KB/s';
+    return bps.toFixed(2) + ' B/s';
+  }
+  function formatTime(seconds: number): string {
+    if (!seconds) return '--:--:--';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
+  }
+</script>
+<!-- Context Menu -->
+{#if contextMenu}
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+<div class="ctx-backdrop" role="presentation" onclick={closeContextMenu} onkeydown={(e) => { if (e.key === 'Escape') closeContextMenu(); }}></div>
+<div class="context-menu" style="top:{contextMenu.y}px;left:{contextMenu.x}px">
+  {#if contextMenu.video}
+    <button class="ctx-item" role="menuitem" onclick={() => { pauseOne(contextMenu?.video?.id ?? 0); closeContextMenu(); }}>⏸ 暂停</button>
+    <button class="ctx-item" role="menuitem" onclick={() => { resumeOne(contextMenu?.video?.id ?? 0); closeContextMenu(); }}>▶ 恢复</button>
+    <button class="ctx-item" role="menuitem" onclick={() => { copyUrl(contextMenu?.video?.url ?? ""); closeContextMenu(); }}>🔗 复制链接</button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item danger" role="menuitem" onclick={() => { removeVideo(contextMenu?.video?.id ?? 0); closeContextMenu(); }}>🗑 删除</button>
+  {:else}
+    <button class="ctx-item" role="menuitem" onclick={() => { selectAll(); closeContextMenu(); }}>全选</button>
+    <button class="ctx-item" role="menuitem" onclick={() => { clearSelection(); closeContextMenu(); }}>取消选中</button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item" role="menuitem" onclick={() => { clearCompleted(); closeContextMenu(); }}>清除已完成</button>
+  {/if}
+</div>
+{/if}
+
+<div class="app">
+  <header class="header">
+    <div class="header-title">
+      <span class="title-text">Classin视频下载工具</span>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <!-- Left Panel: Buttons + Settings -->
+    <aside class="left-panel">
+      <div class="panel-section">
+        <h3 class="panel-title">操作步骤</h3>
+        <div class="step-buttons">
+          <button class="step-btn" class:active={isParsing} onclick={copyCommand} disabled={isParsing}>1. 复制筛选关键词至剪贴板</button>
+          <button class="step-btn" class:active={isParsing} onclick={parseFromClipboard} disabled={isParsing}>2. 解析剪贴板中的请求头</button>
+          <button class="step-btn" class:active={isDownloading} onclick={startDownloads} disabled={videos.length === 0 || isDownloading}>3. 下载全部视频</button>
+          <button class="step-btn" onclick={openFolder}>4. 打开下载目录</button>
+        </div>
+      </div>
+
+      <div class="panel-section settings-section">
+        <h3 class="panel-title">下载设置</h3>
+        <div class="slider-group">
+          <label for="max-concurrent">最大并发数：</label>
+          <input id="max-concurrent" type="range" bind:value={maxConcurrent} min={1} max={20} step={1} oninput={persistSettings} />
+          <span class="slider-value">{maxConcurrent}</span>
+        </div>
+        <div class="slider-group">
+          <label for="max-threads">最大线程数：</label>
+          <input id="max-threads" type="range" bind:value={maxThreads} min={1} max={64} step={1} oninput={persistSettings} />
+          <span class="slider-value">{maxThreads}</span>
+        </div>
+
+        <div class="download-path-section">
+          <label for="download-dir-display">下载目录：</label>
+          <div class="path-control">
+            <span id="download-dir-display" class="download-path" title={downloadDir}>{downloadDir || '未选择'}</span>
+            <button class="btn-change" onclick={selectDirectory}>更改</button>
+          </div>
+        </div>
+      </div>
+
+      {#if errorBox}
+        <div class="error-box">
+          <span class="error-icon">⚠️</span>
+          <span>{errorBox}</span>
+        </div>
+      {/if}
+    </aside>
+
+    <!-- Right Panel: Table + Logs -->
+    <main class="right-panel">
+  {#if videos.length > 0}
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-info">
+        <span>已选择 <b>{selectedCount}</b> / {totalCount} 个</span>
+        <span class="success">✅ 成功 {doneCount}</span>
+        <span class="fail">❌ 失败 {failedCount}</span>
+      </div>
+      <div class="table-actions">
+        <button class="small" onclick={selectAll}>全选</button>
+        <button class="small" onclick={clearSelection}>取消选择</button>
+        <button class="small" onclick={clearCompleted}>清除已完成</button>
+      </div>
+    </div>
+    <div class="table-container" role="region" aria-label="视频列表" oncontextmenu={(e) => onContextMenu(e, null)}>
+      <table class="video-table">
+        <thead>
+          <tr>
+            <th style="width:{widths.idx}px"><div class="col-header">序号</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('idx', e)}></div></th>
+            <th style="width:{widths.name}px"><div class="col-header">课程名称</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('name', e)}></div></th>
+            <th style="width:{widths.size}px"><div class="col-header">文件大小</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('size', e)}></div></th>
+            <th style="width:{widths.progress}px"><div class="col-header">进度</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('progress', e)}></div></th>
+            <th style="width:{widths.status}px"><div class="col-header">状态</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('status', e)}></div></th>
+            <th style="width:{widths.action}px"><div class="col-header">操作</div><!-- svelte-ignore a11y_no_noninteractive_element_interactions --><div class="col-resize" role="separator" aria-orientation="vertical" onmousedown={(e) => startResize('action', e)}></div></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each sortedVideos as video, i (video.id)}
+            <tr class:selected={video.selected ?? false} oncontextmenu={(e) => { e.stopPropagation(); onContextMenu(e, video); }} onclick={(e) => handleRowClick(video, i, e)}>
+              <td style="width:{widths.idx}px"><div class="vid-num">{video.display_index}</div></td>
+              <td style="width:{widths.name}px" title={video.url}><div class="vid-name">{video.name}</div></td>
+              <td style="width:{widths.size}px">{formatSize(video.file_size)}</td>
+              <td style="width:{widths.progress}px">
+                <div class="progress-wrap">
+                  <progress value={video.progress} max="100"></progress>
+                  <span class="pct">{video.progress.toFixed(1)}%</span>
+                </div>
+              </td>
+              <td style="width:{widths.status}px"><span class="badge" style="background:{getStatusColor(video.status)}">{video.status}</span></td>
+              <td style="width:{widths.action}px">
+                <div class="actions">
+                  <button class="btn-sm btn-copy" onclick={() => copyUrl(video.url)}>复制URL</button>
+                  <button class="btn-sm btn-resume" onclick={() => resumeOne(video.id)} title="下载" disabled={isDone(video.status)}>下载</button>
+                  <button class="btn-sm btn-cancel" onclick={() => removeVideo(video.id)} title="删除">删除</button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  {/if}
+
+  <div class="logs-section">
+    <div class="logs-header">
+      <h3>日志与输出</h3>
+      <div class="tab-controls">
+        <button class="tab-btn active">解析日志</button>
+      </div>
+    </div>
+    <div class="log-content">{#each logs as log (log)}<div class="log-line">{log}</div>{/each}</div>
+  </div>
+</main>
+  </div>
+
+  <div class="status-footer">
+    <div class="footer-left">
+      <span>解析状态：</span>
+      <div class="footer-progress"><div class="footer-bar" style="width:{parseProgress}%"></div></div>
+      <span>{statusText}</span>
+    </div>
+    <div class="footer-right">
+      <span>总速度：</span>
+      <span class="speed-value">{formatSpeed(overallSpeed)}</span>
+      <span>已完成：</span>
+      <span class="completed-count">{completedCount}/{totalCount}</span>
+    </div>
+  </div>
+</div>
+<style>
+/* ── WPF Exact Theme Colors ── */
+:root {
+  /* Backgrounds */
+  --bg-window: #F0F2F5;
+  --bg-panel: #FFFFFF;
+  --bg-log: #F8F9FA;
+  --bg-hover: #F5F5F5;
+
+  /* Borders */
+  --border-main: #D9D9D9;
+  --border-light: #E0E0E0;
+  --border-dark: #BDBDBD;
+
+  /* Text Colors */
+  --text-primary: #333333;
+  --text-secondary: #616161;
+  --text-muted: #9E9E9E;
+
+  /* Vibrant Colors (from WPF) */
+  --color-blue: #2196F3;
+  --color-green: #4CAF50;
+  --color-red: #F44336;
+  --color-purple: #9C27B0;
+  --color-teal: #00BCD4;
+  --color-orange: #FF9800;
+  --color-accent: #4A90E2;
+
+  /* Status Colors */
+  --status-done: #4CAF50;
+  --status-fail: #F44336;
+  --status-cancel: #9E9E9E;
+  --status-pause: #FF9800;
+  --status-partial: #00BCD4;
+  --status-downloading: #2196F3;
+  --status-resolving: #9C27B0;
+  --status-waiting: #FF9800;
+
+  /* Shadows & Radius */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-md: 0 2px 6px rgba(0,0,0,0.12);
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
+
+  /* Typography */
+  --font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --font-size-xl: 19px;
+  --font-size-lg: 16px;
+  --font-size-md: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+}
+
+
+/* Main content: 2-column layout */
+.main-content { display: flex; flex: 1; overflow: hidden; }
+
+/* Left Panel: ~25% width */
+.left-panel {
+  width: 280px;
+  min-width: 240px;
+  max-width: 320px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.panel-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.panel-title {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.download-path-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.download-path-section label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.path-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.path-control .download-path {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-change {
+  padding: 3px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.error-box {
+  background: rgba(244,67,54,0.1);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.error-icon {
+  font-size: 14px;
+}
+button { padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-family: inherit; transition: all 0.15s; background: var(--bg-secondary); color: var(--text-primary); white-space: nowrap; }
+button:hover:not(:disabled) { background: var(--bg-tertiary); border-color: var(--border-hover); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.danger { background: var(--danger); color: white; border-color: var(--danger); }
+button.danger:hover:not(:disabled) { background: #d32f2f; }
+button.small { padding: 3px 8px; font-size: 11px; }
+
+/* WPF-style title */
+.header-title { display: flex; align-items: center; }
+.title-text { font-size: 19px; font-weight: 600; color: #4A90E2; }
+
+/* WPF-style step buttons (left operation panel) */
+.step-buttons { display: flex; flex-direction: column; gap: 8px; }
+.step-btn { width: 100%; text-align: left; padding: 10px 12px; font-size: 13px; }
+.step-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* WPF-style sliders */
+.slider-group { display: flex; align-items: center; gap: 8px; }
+.slider-group label { font-weight: 600; color: var(--text-secondary); min-width: 90px; font-size: 12px; }
+.slider-group input[type=range] { flex: 1; accent-color: var(--accent); }
+.slider-value { min-width: 30px; text-align: center; font-weight: 600; color: var(--accent); font-size: 12px; }
+
+/* WPF-style logs tabs */
+.tab-controls { display: flex; gap: 4px; }
+.tab-btn { padding: 4px 12px; font-size: 11px; }
+.tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.step-buttons { display: flex; flex-direction: column; gap: 8px; }
+.step-btn { width: 100%; text-align: left; padding: 10px 12px; font-size: 13px; }
+.step-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.slider-group { display: flex; align-items: center; gap: 8px; }
+.slider-group label { font-weight: 600; color: var(--text-secondary); min-width: 90px; font-size: 12px; }
+.slider-group input[type=range] { flex: 1; accent-color: var(--accent); }
+.slider-value { min-width: 30px; text-align: center; font-weight: 600; color: var(--accent); font-size: 12px; }
+
+/* WPF-style download path in footer */
+.download-path { color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-change { padding: 3px 10px; font-size: 11px; }
+
+/* Right Panel: Table above, logs below */
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.table-section { flex: 1 1 62%; display: flex; flex-direction: column; min-height: 0; margin: 12px 12px 0; overflow: hidden; }
+.table-container { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.table-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.table-info { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+.success { color: var(--success); font-weight: 600; }
+.fail { color: var(--danger); font-weight: 600; }
+.table-actions { display: flex; gap: 4px; }
+.video-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.video-table th, .video-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.video-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-tertiary); }
+.video-table th { font-weight: 600; color: var(--text-secondary); font-size: 11px; }
+.col-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; font: inherit; color: inherit; }
+.col-header:hover { color: var(--accent); }
+.col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 4px; cursor: col-resize; background: transparent; }
+.video-table th { position: relative; }
+.video-table tr:hover { background: var(--bg-hover); }
+.video-table tr.selected { background: rgba(33,150,243,0.1); }
+.vid-num { font-weight: 600; color: var(--text-muted); font-size: 11px; text-align: center; }
+.vid-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+progress { width: 100%; height: 6px; border: none; background: var(--border); border-radius: 3px; overflow: hidden; }
+progress::-webkit-progress-bar { background: var(--border); }
+progress::-webkit-progress-value { background: linear-gradient(90deg, var(--accent), var(--success)); transition: width 0.3s; }
+progress::-moz-progress-bar { background: linear-gradient(90deg, var(--accent), var(--success)); }
+.pct { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+.progress-wrap { display: flex; align-items: center; gap: 4px; }
+.speed-value { font-weight: 600; color: var(--accent); }
+.completed-count { font-weight: 600; color: var(--text-secondary); }
+.badge { display: inline-block; padding: 2px 6px; border-radius: 3px; color: white; font-size: 11px; font-weight: 500; }
+.actions { display: flex; gap: 3px; }
+.btn-sm { padding: 2px 6px; font-size: 11px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary); cursor: pointer; }
+.btn-sm:hover { background: var(--bg-tertiary); }
+.btn-resume { color: var(--success); border-color: var(--success); }
+.btn-cancel { color: var(--danger); border-color: var(--danger); }
+.btn-copy { color: var(--accent); border-color: var(--accent); }
+
+.logs-section {
+  margin: 12px 12px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.logs-section .logs-header {
+  margin: 0;
+}
+.logs-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); }
+.logs-header h3 { margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.log-content { max-height: 180px; overflow-y: auto; font-family: Consolas,monospace; font-size: 11px; padding: 8px; background: #1e1e1e; }
+.log-line { padding: 2px 8px; color: #d4d4d4; border-bottom: 1px solid #2d2d2d; white-space: pre-wrap; word-break: break-all; }
+
+.status-footer { display: flex; align-items: center; justify-content: space-between; padding: 4px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.footer-left, .footer-right { display: flex; align-items: center; gap: 8px; }
+.footer-progress { width: 120px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.footer-bar { height: 100%; background: var(--accent); transition: width 0.3s; }
+
+.ctx-backdrop { position: fixed; inset: 0; z-index: 100; }
+.context-menu { position: fixed; z-index: 101; background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-lg); border-radius: var(--radius-sm); min-width: 160px; padding: 4px 0; overflow: hidden; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.context-menu { animation: fadeIn 0.12s ease; }
+.ctx-item { display: block; width: 100%; text-align: left; padding: 6px 16px; cursor: pointer; font-size: 12px; color: var(--text-primary); transition: background 0.1s; background: transparent; border: none; border-radius: 0; }
+.ctx-item:hover { background: var(--bg-tertiary); }
+.ctx-item.danger { color: var(--danger); }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+</style>
