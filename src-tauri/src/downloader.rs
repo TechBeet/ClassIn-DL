@@ -27,7 +27,10 @@ fn emit(app: &AppHandle, u: ProgressUpdate) {
 }
 
 fn resume_path(p: &Path) -> PathBuf {
-    p.with_added_extension("json")
+    // MSRV-compatible alternative to `with_added_extension` (stable since 1.91)
+    let mut s = p.as_os_str().to_os_string();
+    s.push(".json");
+    PathBuf::from(s)
 }
 
 fn build_client() -> Result<reqwest::Client> {
