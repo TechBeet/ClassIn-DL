@@ -53,6 +53,7 @@ pub fn load_settings() -> AppSettings {
 }
 
 /// Internal helper for loading from a specific path (for testing).
+#[cfg_attr(not(test), allow(dead_code))]
 fn load_from(p: &std::path::Path) -> AppSettings {
     if let Ok(data) = std::fs::read_to_string(p) {
         if let Ok(s) = serde_json::from_str::<AppSettings>(&data) {
@@ -63,6 +64,7 @@ fn load_from(p: &std::path::Path) -> AppSettings {
 }
 
 /// Internal helper for saving to a specific path (for testing).
+#[cfg_attr(not(test), allow(dead_code))]
 fn save_to(p: &std::path::Path, settings: &AppSettings) -> Result<()> {
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent)?;
