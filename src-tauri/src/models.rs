@@ -410,4 +410,56 @@ mod tests {
         assert_eq!(update.speed, 0.0);
         assert_eq!(update.phase, "Waiting");
     }
+
+    // ---- Parity tests added during QA validation against the WPF version ----
+
+    #[test]
+    fn test_download_status_labels_match_wpf() {
+        // WPF strings verified from MainWindow.xaml.cs DisplayStatus property
+        assert_eq!(DownloadStatus::Waiting.label(), "等待中");          // WPF: "Waiting"
+        assert_eq!(DownloadStatus::Resolving.label(), "解析中");        // WPF: "Resolving"
+        assert_eq!(DownloadStatus::Downloading.label(), "下载中");      // WPF: "Downloading"
+        assert_eq!(DownloadStatus::Partial.label(), "部分完成");        // WPF: "Partial"
+        assert_eq!(DownloadStatus::Completed.label(), "已完成");        // WPF: "Completed"
+        assert_eq!(DownloadStatus::Failed.label(), "失败");             // WPF: "Failed"
+        assert_eq!(DownloadStatus::Cancelled.label(), "已取消");        // WPF: "Cancelled"
+        assert_eq!(DownloadStatus::Paused.label(), "已暂停");           // WPF: "Paused"
+    }
+
+    #[test]
+    fn test_sanitize_filename_removes_invalid_chars() {
+        // Windows invalid chars: < > : " / \ | ? *
+        assert!(!sanitize_filename("test<:file?name").contains('<'));
+        assert!(!sanitize_filename("test<:file?name").contains(':'));
+        assert!(!sanitize_filename("test<:file?name").contains('/'));
+    }
+
+    #[test]
+    fn test_sanitize_filename_truncates_long_names() {
+        let long_name: String = "a".repeat(200);
+        let result = sanitize_filename(&long_name);
+        assert!(result.len() <= 120);
+    }
+
+    #[test]
+    fn test_format_time_matches_wpf() {
+        // WPF: string.Format("{0:00}:{1:00}:{2:00}", h, m, s)
+        assert_eq!(format_time(0), "00:00:00");
+        assert_eq!(format_time(3661), "01:01:01");
+        assert_eq!(format_time(86400), "24:00:00");
+    }
+
+    #[test]
+    fn test_resolve_video_path_hls_ext() {
+        let video = VideoItem::new(1, "lecture".into(), "http://example.com/video.m3u8".into());
+        let path = resolve_video_path("D:\\Downloads", &video, true);
+        assert!(path.ends_with("lecture.ts"));
+    }
+
+    #[test]
+    fn test_resolve_video_path_preserves_mp4() {
+        let video = VideoItem::new(1, "lecture".into(), "http://example.com/video.mp4".into());
+        let path = resolve_video_path("D:\\Downloads", &video, false);
+        assert!(path.ends_with("lecture.mp4"));
+    }
 }
