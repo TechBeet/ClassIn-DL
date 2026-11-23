@@ -54,7 +54,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path release
           Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/${{ env.APP_NAME }}.exe" "release/"
           Compress-Archive -Path "release/*" -DestinationPath "release/${{ env.APP_NAME }}-windows-x64.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-windows-x64
           path: release/${{ env.APP_NAME }}-windows-x64.zip
@@ -78,7 +78,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path release
           Copy-Item "src-tauri/target/aarch64-pc-windows-msvc/release/${{ env.APP_NAME }}.exe" "release/"
           Compress-Archive -Path "release/*" -DestinationPath "release/${{ env.APP_NAME }}-windows-arm64.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-windows-arm64
           path: release/${{ env.APP_NAME }}-windows-arm64.zip
@@ -102,7 +102,7 @@ jobs:
           mkdir -p release
           cp "src-tauri/target/aarch64-apple-darwin/release/${{ env.APP_NAME }}" "release/"
           cd release && tar -czf "${{ env.APP_NAME }}-macos-arm64.tar.gz" "${{ env.APP_NAME }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-macos-arm64
           path: release/${{ env.APP_NAME }}-macos-arm64.tar.gz
@@ -126,7 +126,7 @@ jobs:
           mkdir -p release
           cp "src-tauri/target/x86_64-apple-darwin/release/${{ env.APP_NAME }}" "release/"
           cd release && tar -czf "${{ env.APP_NAME }}-macos-x64.tar.gz" "${{ env.APP_NAME }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-macos-x64
           path: release/${{ env.APP_NAME }}-macos-x64.tar.gz
@@ -155,7 +155,7 @@ jobs:
           cp "src-tauri/target/x86_64-unknown-linux-gnu/release/${{ env.APP_NAME }}" "release/"
           chmod +x "release/${{ env.APP_NAME }}"
           cd release && tar -czf "${{ env.APP_NAME }}-linux-x64.tar.gz" "${{ env.APP_NAME }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x64
           path: release/${{ env.APP_NAME }}-linux-x64.tar.gz
@@ -186,7 +186,7 @@ jobs:
           cp "src-tauri/target/aarch64-unknown-linux-gnu/release/${{ env.APP_NAME }}" "release/"
           chmod +x "release/${{ env.APP_NAME }}"
           cd release && tar -czf "${{ env.APP_NAME }}-linux-arm64.tar.gz" "${{ env.APP_NAME }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-arm64
           path: release/${{ env.APP_NAME }}-linux-arm64.tar.gz
@@ -213,7 +213,7 @@ jobs:
           cp "src-tauri/target/x86_64-unknown-linux-musl/release/${{ env.APP_NAME }}" "release/"
           chmod +x "release/${{ env.APP_NAME }}"
           cd release && tar -czf "${{ env.APP_NAME }}-linux-x64-musl.tar.gz" "${{ env.APP_NAME }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}-linux-x64-musl
           path: release/${{ env.APP_NAME }}-linux-x64-musl.tar.gz
